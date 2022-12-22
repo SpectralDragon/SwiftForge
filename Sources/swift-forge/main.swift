@@ -1,0 +1,3 @@
+import ForgeCommands
+
+SwiftForge.main()
