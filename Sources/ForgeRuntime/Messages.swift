@@ -6,16 +6,19 @@
 
 import ForgeBuildCore
 
-public struct HostToBuildManifestMessage: Codable {
-//    case buildManifest(String)
-    
-    public let platform: Platform
-    
-    public init(platform: Platform) {
-        self.platform = platform
-    }
+public enum HostToBuildManifestMessage: Codable {
+    case buildManifest(Platform)
+
+    case runTask(name: String, arguments: [String])
 }
 
 public enum BuildManifestToHostMessage: Codable {
-    case buildManifest(String)
+    
+    case compiledBuildManifest(BuildManifest)
+    
+    case emit(message: String)
+    
+    case exit
+
+    case taskFinished(name: String, status: Int32)
 }

@@ -42,10 +42,18 @@ public class Workspace {
 
     public func getManifestGraph() throws {
         let manifest = path.appending(component: "Build.swift")
+        
+        let semaphor = DispatchSemaphore(value: 0)
 
-        manifestRunner.runBuildManifest(at: manifest, initialMessage: Data()) { result in
+        manifestRunner.runBuildManifest(
+            at: manifest,
+            initialMessage: .runTask(name: "task-build", arguments: [])
+        ) { result in
+            semaphor.signal()
             print(result)
         }
+        
+        semaphor.wait()
     }
 }
 
@@ -58,13 +66,21 @@ public class ForgeContext {
     }
     
     public func getWorkspace() throws -> Workspace {
+        
+        let path = AbsolutePath("/Users/v.prusakov/Developer/SwiftForge/Example")
+        let buildDir = path.appending(component: ".build")
+        
+        if !localFileSystem.exists(buildDir) {
+            try localFileSystem.createDirectory(buildDir)
+        }
+        
         let manifestRunner = try DefaultBuildManifestRunner(
-            cacheDirectory: AbsolutePath("/Users/v.prusakov/Developer/SwiftForge/Example"),
+            cacheDirectory: buildDir,
             toolchain: self.getHostToolchain()
         )
         
         return try Workspace(
-            path: AbsolutePath("/Users/v.prusakov/Developer/SwiftForge/Example"),
+            path: path,
             fileSystem: localFileSystem,
             toolchain: self.getHostToolchain(),
             manifestRunner: manifestRunner

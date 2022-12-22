@@ -2,23 +2,25 @@
 // Created by v.prusakov on 12/21/22.
 //
 
-public struct Platform: RawRepresentable, Codable {
-    public private(set) var rawValue: String
+public struct Platform: Codable, Equatable {
+    public let name: String
 
-    public init(rawValue: String) {
-        self.rawValue = rawValue
+    init(name: String) {
+        self.name = name
     }
 }
 
 public extension Platform {
-    static let iOS = Platform(rawValue: "iOS")
-    static let macOS = Platform(rawValue: "macOS")
-    static let tvOS = Platform(rawValue: "tvOS")
-    static let watchOS = Platform(rawValue: "watchOS")
+    static let iOS = Platform(name: "iOS")
+    static let macOS = Platform(name: "macOS")
+    static let tvOS = Platform(name: "tvOS")
+    static let watchOS = Platform(name: "watchOS")
 
-    static let applePlatforms: [Platform] = [.iOS, .macOS, .tvOS, .watchOS]
-
-    static let linux = Platform(rawValue: "linux")
-    static let android = Platform(rawValue: "android")
-    static let windows = Platform(rawValue: "windows")
+    static let linux = Platform(name: "linux")
+    static let android = Platform(name: "android")
+    static let windows = Platform(name: "windows")
+    
+    static func custom(name: String) -> Platform {
+        Platform(name: name)
+    }
 }

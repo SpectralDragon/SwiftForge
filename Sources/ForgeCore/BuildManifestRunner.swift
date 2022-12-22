@@ -26,7 +26,7 @@ public protocol BuildManifestRunner {
     
     func runBuildManifest(
         at path: AbsolutePath,
-        initialMessage: Data,
+        initialMessage: HostToBuildManifestMessage,
         completion: @escaping (Result<BuildManifestResult, Error>) -> Void
     )
 }
@@ -122,11 +122,9 @@ public class DefaultBuildManifestRunner: BuildManifestRunner {
         }
     }
     
-    let semaphore = DispatchSemaphore(value: 0)
-    
     public func runBuildManifest(
         at path: AbsolutePath,
-        initialMessage: Data,
+        initialMessage: HostToBuildManifestMessage,
         completion: @escaping (Result<BuildManifestResult, Error>) -> Void
     ) {
         
@@ -141,14 +139,12 @@ public class DefaultBuildManifestRunner: BuildManifestRunner {
             case .success(let path):
                 self.invoke(
                     executable: AbsolutePath(path),
-                    initialMessage: Data()
+                    initialMessage: initialMessage
                 )
             case .failure(let error):
                 fatalError(error.localizedDescription)
             }
         }
-        
-        semaphore.wait(timeout: .now() + 5)
     }
     
     private func sdkRoot() -> AbsolutePath? {
@@ -169,7 +165,7 @@ public class DefaultBuildManifestRunner: BuildManifestRunner {
         return sdkRootPath
     }
     
-    private func invoke(executable: AbsolutePath, initialMessage: Data) {
+    private func invoke(executable: AbsolutePath, initialMessage: HostToBuildManifestMessage) {
         let process = Process()
         process.executableURL = executable.asURL
         process.arguments = []
@@ -184,57 +180,29 @@ public class DefaultBuildManifestRunner: BuildManifestRunner {
         
         // Set up a pipe for receiving messages from the plugin on its stdout.
         let stdoutPipe = Pipe()
-        let stdoutLock = NSLock()
         
         let connection = HostToBuildConnection(
             input: stdoutPipe.fileHandleForReading,
             output: outputHandle
         )
         
-        //        stdoutPipe.fileHandleForReading.readabilityHandler = { (fileHandle: FileHandle) in
-        //            // Receive the next message and pass it on to the delegate.
-        ////            stdoutLock.withLock {
-        //                do {
-        //                    while let message = try connection.receiveNextMessage() {
-        //                        // FIXME: We should handle errors here.
-        //                        self.queue.async {
-        //                            do {
-        ////                                let data = try JSONDecoder().decode(HostToBuildManifestMessage.self, from: initialMessage)
-        ////
-        ////                                try connection.send(data)
-        //                            } catch {
-        //                                print("error while trying to handle message from plugin: \(error)")
-        //                            }
-        //                        }
-        //                    }
-        //                }
-        //                catch {
-        //                    print("error while trying to read message from plugin: \(error)")
-        //                }
-        ////            }
-        //
-        //        }
-        
         process.standardOutput = stdoutPipe
         
         // Set up a pipe for receiving free-form text output from the plugin on its stderr.
         let stderrPipe = Pipe()
-        let stderrLock = NSLock()
         var stderrData = Data()
         
         stderrPipe.fileHandleForReading.readabilityHandler = { (fileHandle: FileHandle) -> Void in
             // Read and pass on any available free-form text output from the plugin.
             // We need the lock since we could run concurrently with the termination handler.
-//            stderrLock.withLock {
-                let data = fileHandle.availableData
-                
-                // Pass on any available data to the delegate.
-                if data.isEmpty { return }
-                stderrData.append(contentsOf: data)
-                self.queue.async {
-                    print(String(data: data, encoding: .utf8)!)
-                }
-//            }
+            let data = fileHandle.availableData
+            
+            // Pass on any available data to the delegate.
+            if data.isEmpty { return }
+            stderrData.append(contentsOf: data)
+            self.queue.async {
+                print(String(data: data, encoding: .utf8)!)
+            }
             
         }
         
@@ -243,51 +211,25 @@ public class DefaultBuildManifestRunner: BuildManifestRunner {
         do {
             try process.run()
             
-            try connection.send(HostToBuildManifestMessage(platform: .macOS))
+            try connection.send(initialMessage)
+            
+            while let message = try connection.receiveNextMessage() {
+                
+                switch message {
+                case .compiledBuildManifest(let result):
+                    print("Got result \(result)")
+                    break
+                case .emit(let message):
+                    print("Emitted", message)
+                case .exit:
+                    break
+                case .taskFinished(let taskName, let result):
+                    print("task \(taskName) finished with result \(result)")
+                    break
+                }
+            }
         } catch {
             fatalError("Failed to run process: \(error)")
         }
-        
-        process.waitUntilExit()
-        
-        semaphore.signal()
-    }
-}
-
-fileprivate extension FileHandle {
-    
-    func writePluginMessage(_ message: Data) throws {
-        // Write the header (a 64-bit length field in little endian byte order).
-        var length = UInt64(littleEndian: UInt64(message.count))
-        let header = Swift.withUnsafeBytes(of: &length) { Data($0) }
-        assert(header.count == 8)
-        try self.write(contentsOf: header)
-        
-        // Write the payload.
-        try self.write(contentsOf: message)
-    }
-    
-    func readPluginMessage() throws -> Data? {
-        // Read the header (a 64-bit length field in little endian byte order).
-        guard let header = try self.read(upToCount: 8) else { return nil }
-        guard header.count == 8 else {
-            throw PluginMessageError.truncatedHeader
-        }
-        let length = header.withUnsafeBytes{ $0.load(as: UInt64.self).littleEndian }
-        guard length >= 2 else {
-            throw PluginMessageError.invalidPayloadSize
-        }
-        
-        // Read and return the message.
-        guard let message = try self.read(upToCount: Int(length)), message.count == length else {
-            throw PluginMessageError.truncatedPayload
-        }
-        return message
-    }
-    
-    enum PluginMessageError: Swift.Error {
-        case truncatedHeader
-        case invalidPayloadSize
-        case truncatedPayload
     }
 }

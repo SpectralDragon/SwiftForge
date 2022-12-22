@@ -3,19 +3,23 @@
 //
 
 import Forge
-//import ForgeApplePlugin
 
 @main
 struct App: Build {
+    
+    @Task(name: "task-build", selector: App.taskBuild) var myTask
     
     init() {
         print("App initialized")
     }
 
     func build(_ context: Context) async throws {
-        
         if context.platform == .macOS {
-            print("macOS")
+            print("build for macOS")
+        }
+
+        if context.platform == .iOS {
+            print("build for iOS")
         }
         
 //        context.addLibrary(
@@ -92,5 +96,9 @@ struct App: Build {
 //                )
 //            )
 //        }
+    }
+    
+    func taskBuild(_ args: [String : String]) {
+        print("Builded!")
     }
 }
